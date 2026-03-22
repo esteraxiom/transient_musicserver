@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>musicserver</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <h1>musicserver</h1>
+
+    <section id="form-section">
+      <form id="download-form">
+        <input type="url" id="url-input" placeholder="youtube url" required>
+        <input type="text" id="title-input" placeholder="custom title (optional)">
+        <button type="submit" id="submit-btn">DOWNLOAD</button>
+      </form>
+    </section>
+
+    <section id="status-section" hidden>
+      <div id="status-display"></div>
+    </section>
+
+    <section id="tracks-section">
+      <h2>tracks</h2>
+      <ul id="tracks-list"></ul>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

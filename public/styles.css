@@ -1,0 +1,167 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0d0d0d;
+  --fg: #ffffff;
+  --muted: #888888;
+  --accent: #39ff14;
+  --error: #ff4444;
+  --border: 1px solid #ffffff;
+  --font: 'Courier New', Courier, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 2rem;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.4rem;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  border-bottom: var(--border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+h2 {
+  font-size: 1rem;
+  text-transform: lowercase;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+/* Form */
+
+#download-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+input[type="url"],
+input[type="text"] {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  border: var(--border);
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  width: 100%;
+}
+
+input[type="url"]:focus,
+input[type="text"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+button {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  border: var(--border);
+  padding: 0.5rem 1.5rem;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  align-self: flex-start;
+}
+
+button:hover {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Status */
+
+#status-section {
+  margin-bottom: 2rem;
+  padding: 0.75rem;
+  border: var(--border);
+}
+
+#status-display {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.status-queued  { color: var(--muted); }
+.status-running { color: var(--accent); }
+.status-done    { color: var(--fg); }
+.status-error   { color: var(--error); }
+
+/* Tracks */
+
+#tracks-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.track-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: var(--border);
+}
+
+.track-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.track-actions a,
+.track-actions button {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.track-actions a:hover,
+.track-actions button:hover {
+  color: var(--fg);
+  background: none;
+}
+
+.copy-feedback {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+/* Utility */
+[hidden] { display: none !important; }
