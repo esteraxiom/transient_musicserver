@@ -1,0 +1,40 @@
+#!/bin/sh
+# Fake yt-dlp for testing purposes
+
+# Handle --print "%(title)s" mode
+if echo "$*" | grep -q -- '--print'; then
+  echo "Test Song Title"
+  exit 0
+fi
+
+# Simulate progress output to stderr
+echo "[download]   0.0% of 5.00MiB" >&2
+sleep 0.05
+echo "[download]  25.0% of 5.00MiB at 1.00MiB/s ETA 00:03" >&2
+sleep 0.05
+echo "[download]  50.0% of 5.00MiB at 1.00MiB/s ETA 00:02" >&2
+sleep 0.05
+echo "[download] 100% of 5.00MiB" >&2
+
+# Find the -o flag and create a dummy file at that path
+OUTPUT=""
+NEXT=false
+for arg in "$@"; do
+  if $NEXT; then
+    OUTPUT="$arg"
+    NEXT=false
+  fi
+  if [ "$arg" = "-o" ]; then
+    NEXT=true
+  fi
+done
+
+if [ -n "$OUTPUT" ]; then
+  # Replace %(ext)s with mp3
+  OUTFILE=$(echo "$OUTPUT" | sed 's/%(ext)s/mp3/g')
+  mkdir -p "$(dirname "$OUTFILE")"
+  # Write minimal bytes so the file exists and has a nonzero size
+  printf '\xff\xfb\x90\x00' > "$OUTFILE"
+fi
+
+exit 0
