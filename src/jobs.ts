@@ -3,7 +3,7 @@ import { renameSync, statSync } from "fs";
 import { join } from "path";
 import { getJob, updateJobStatus, updateJobProgress, insertTrack } from "./db";
 import { downloadAudio, fetchTitle, type DownloadOptions } from "./ytdlp";
-import { generateFilename } from "./sanitize";
+import { generateFilename, generateCustomFilename } from "./sanitize";
 
 export interface JobQueue {
   enqueue(jobId: string): void;
@@ -70,7 +70,9 @@ export function createQueue(
           ? job.requested_title
           : await titler(job.source_url, ytdlpPath);
 
-      const filename = generateFilename(title, jobId);
+      const filename = job.custom_filename
+        ? generateCustomFilename(title)
+        : generateFilename(title, jobId);
       const srcPath = join(tmpDir, `${jobId}.mp3`);
       const destPath = join(mediaDir, filename);
 

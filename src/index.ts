@@ -4,8 +4,8 @@ import { openDb, runMigrations } from "./db";
 import { createQueue } from "./jobs";
 import { createApp } from "./server";
 
-const PORT      = Number(process.env.PORT ?? "3000");
-const HOST      = process.env.HOST      ?? "0.0.0.0";
+const PORT      = Number(process.env.PORT ?? "47291");
+const HOST      = process.env.HOST      ?? "127.0.0.1";
 const MEDIA_DIR = process.env.MEDIA_DIR ?? "./media";
 const TMP_DIR   = process.env.TMP_DIR   ?? "./tmp";
 const DB_PATH   = process.env.DB_PATH   ?? "./data/app.sqlite";

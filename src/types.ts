@@ -11,6 +11,7 @@ export interface Job {
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
+  custom_filename: boolean;
 }
 
 export interface Track {

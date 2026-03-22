@@ -3,8 +3,8 @@ import { serveStatic } from "hono/bun";
 import { join } from "path";
 import { unlinkSync } from "fs";
 import type { Database } from "bun:sqlite";
-import { getJob, getTrack, getAllTracks, insertJob, deleteTrack } from "./db";
-import { isAllowedUrl, isPlaylistUrl } from "./sanitize";
+import { getJob, getTrack, getAllTracks, insertJob, deleteTrack, filenameExists } from "./db";
+import { isAllowedUrl, isPlaylistUrl, generateCustomFilename } from "./sanitize";
 import type { JobQueue } from "./jobs";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -66,7 +66,14 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
       return c.json({ error: "Playlist URLs are not supported" }, 400);
     }
 
-    const job = insertJob(db, { source_url: url, requested_title: title ?? null });
+    if (title && title.trim()) {
+      const filename = generateCustomFilename(title);
+      if (filenameExists(db, filename)) {
+        return c.json({ error: "A track with this name already exists" }, 409);
+      }
+    }
+
+    const job = insertJob(db, { source_url: url, requested_title: title ?? null, custom_filename: !!title?.trim() });
     queue.enqueue(job.id);
 
     return c.json({ jobId: job.id }, 201);
@@ -124,7 +131,7 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
     try {
       unlinkSync(join(mediaDir, track.filename));
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      if ((err as { code?: string }).code !== "ENOENT") {
         throw err;
       }
     }

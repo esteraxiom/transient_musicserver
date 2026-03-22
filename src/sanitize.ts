@@ -19,6 +19,11 @@ export function generateFilename(title: string, jobId: string): string {
   return `${safe}__${shortId}.mp3`;
 }
 
+export function generateCustomFilename(title: string): string {
+  const safe = sanitizeFilename(title);
+  return `${safe}.mp3`;
+}
+
 const ALLOWED_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",

@@ -17,7 +17,8 @@ export function runMigrations(db: Database): void {
       error            TEXT,
       created_at       INTEGER NOT NULL,
       started_at       INTEGER,
-      finished_at      INTEGER
+      finished_at      INTEGER,
+      custom_filename  INTEGER DEFAULT 0
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status)`);
@@ -37,16 +38,24 @@ export function runMigrations(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks (created_at)`);
 }
 
+export function filenameExists(db: Database, filename: string): boolean {
+  const result = db.query<{ count: number }, [string]>(
+    `SELECT COUNT(*) as count FROM tracks WHERE filename = ?`
+  ).get(filename);
+  return result !== null && result.count > 0;
+}
+
 export function insertJob(
   db: Database,
-  fields: { source_url: string; requested_title: string | null }
+  fields: { source_url: string; requested_title: string | null; custom_filename?: boolean }
 ): Job {
   const id = crypto.randomUUID();
   const created_at = Date.now();
+  const custom_filename = fields.custom_filename ? 1 : 0;
   db.run(
-    `INSERT INTO jobs (id, source_url, requested_title, status, created_at)
-     VALUES (?, ?, ?, 'queued', ?)`,
-    [id, fields.source_url, fields.requested_title, created_at]
+    `INSERT INTO jobs (id, source_url, requested_title, status, created_at, custom_filename)
+     VALUES (?, ?, ?, 'queued', ?, ?)`,
+    [id, fields.source_url, fields.requested_title, created_at, custom_filename]
   );
   return {
     id,
@@ -59,6 +68,7 @@ export function insertJob(
     created_at,
     started_at: null,
     finished_at: null,
+    custom_filename: fields.custom_filename ?? false,
   };
 }
 
