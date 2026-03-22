@@ -2,6 +2,12 @@
 
 Self-hosted LAN service to download YouTube audio as MP3 and serve it for streaming.
 
+## Pending To-Dos:
+- [ ] Delete Songs
+- [ ] Flush All Songs
+- [ ] Rename Files
+- [ ] Support Spaces?
+
 ## Requirements
 
 - [Bun](https://bun.sh/) runtime
