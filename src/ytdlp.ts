@@ -3,7 +3,27 @@ export interface DownloadOptions {
   outputTemplate: string;
   onProgress?: (line: string) => void;
   ytdlpPath?: string;
+  cookiesPath?: string;
+  proxy?: string;
   signal?: AbortSignal;
+}
+
+export interface YtdlpAccessOptions {
+  cookiesPath?: string;
+  proxy?: string;
+}
+
+export function buildAccessArgs(opts: YtdlpAccessOptions): string[] {
+  const args = ["--js-runtimes", "bun"];
+  if (opts.cookiesPath) args.push("--cookies", opts.cookiesPath);
+  if (opts.proxy) args.push("--proxy", opts.proxy);
+  return args;
+}
+
+function errorDetail(stderr: string): string {
+  const lines = stderr.split("\n").map(line => line.trim()).filter(Boolean);
+  const error = lines.reverse().find(line => line.startsWith("ERROR:"));
+  return (error ?? "").replace(/^ERROR:\s*/, "").slice(0, 500);
 }
 
 export function parseProgressLine(line: string): string | null {
@@ -13,18 +33,28 @@ export function parseProgressLine(line: string): string | null {
   return null;
 }
 
-export async function fetchTitle(url: string, ytdlpPath = "yt-dlp", signal?: AbortSignal): Promise<string> {
+export async function fetchTitle(
+  url: string,
+  ytdlpPath = "yt-dlp",
+  signal?: AbortSignal,
+  cookiesPath?: string,
+  proxy?: string,
+): Promise<string> {
   const proc = Bun.spawn(
-    [ytdlpPath, "--no-playlist", "--print", "%(title)s", url],
-    { stdout: "pipe", stderr: "ignore", signal }
+    [ytdlpPath, ...buildAccessArgs({ cookiesPath, proxy }), "--no-playlist", "--print", "%(title)s", url],
+    { stdout: "pipe", stderr: "pipe", signal }
   );
 
-  const exitCode = await proc.exited;
+  const [exitCode, text, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
   if (exitCode !== 0) {
-    throw new Error(`yt-dlp exited with code ${exitCode} during title fetch`);
+    const detail = errorDetail(stderr);
+    throw new Error(`yt-dlp exited with code ${exitCode} during title fetch${detail ? `: ${detail}` : ""}`);
   }
 
-  const text = await new Response(proc.stdout).text();
   return text.trim();
 }
 
@@ -34,6 +64,7 @@ export async function downloadAudio(opts: DownloadOptions): Promise<void> {
   const proc = Bun.spawn(
     [
       ytdlpPath,
+      ...buildAccessArgs(opts),
       "--extract-audio",
       "--audio-format", "mp3",
       "--format", "bestaudio/best",
@@ -50,6 +81,7 @@ export async function downloadAudio(opts: DownloadOptions): Promise<void> {
   const reader = proc.stderr.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let lastError = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -62,18 +94,20 @@ export async function downloadAudio(opts: DownloadOptions): Promise<void> {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
+      if (trimmed.startsWith("ERROR:")) lastError = errorDetail(trimmed);
       const parsed = parseProgressLine(trimmed);
       if (parsed) opts.onProgress?.(parsed);
     }
   }
 
   if (buffer.trim()) {
+    if (buffer.trim().startsWith("ERROR:")) lastError = errorDetail(buffer.trim());
     const parsed = parseProgressLine(buffer.trim());
     if (parsed) opts.onProgress?.(parsed);
   }
 
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
-    throw new Error(`yt-dlp exited with code ${exitCode}`);
+    throw new Error(`yt-dlp exited with code ${exitCode}${lastError ? `: ${lastError}` : ""}`);
   }
 }

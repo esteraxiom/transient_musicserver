@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { parseProgressLine, fetchTitle, downloadAudio } from "./ytdlp";
+import { buildAccessArgs, parseProgressLine, fetchTitle, downloadAudio } from "./ytdlp";
 import { join } from "path";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -27,6 +27,23 @@ describe("parseProgressLine", () => {
     expect(parseProgressLine("[ffmpeg] Converting audio")).toBeNull();
     expect(parseProgressLine("[youtube] Extracting URL")).toBeNull();
     expect(parseProgressLine("")).toBeNull();
+  });
+});
+
+describe("buildAccessArgs", () => {
+  test("enables Bun and adds optional cookies and proxy settings", () => {
+    expect(buildAccessArgs({
+      cookiesPath: "/run/secrets/musicserver/youtube-cookies.txt",
+      proxy: "socks5://proxy.internal:1080",
+    })).toEqual([
+      "--js-runtimes", "bun",
+      "--cookies", "/run/secrets/musicserver/youtube-cookies.txt",
+      "--proxy", "socks5://proxy.internal:1080",
+    ]);
+  });
+
+  test("does not add empty access settings", () => {
+    expect(buildAccessArgs({})).toEqual(["--js-runtimes", "bun"]);
   });
 });
 

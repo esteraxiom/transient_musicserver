@@ -37,6 +37,8 @@ Environment variables (all optional with defaults):
 | `DB_PATH` | `./data/app.sqlite` | SQLite database file path |
 | `MEDIA_MAX_BYTES` | `10737418240` | Maximum finished-library size, 10 GiB by default |
 | `MIN_FREE_BYTES` | `5368709120` | Required filesystem free-space reserve, 5 GiB by default |
+| `YT_DLP_COOKIES_PATH` | *(unset)* | Optional Netscape cookie file for YouTube challenges |
+| `YT_DLP_PROXY` | *(unset)* | Optional HTTP, HTTPS, or SOCKS proxy used only by yt-dlp |
 | `API_TOKEN` | *(unset)* | Optional bearer token for `/api/*` |
 
 Create a `.env` file in the project root to override defaults:
@@ -146,6 +148,7 @@ middleware definition. Axiom-One uses these persistent host paths:
 - `/data/musicserver/db`
 - `/data/musicserver/media`
 - `/data/musicserver/tmp`
+- `/data/musicserver/secrets` (read-only inside the container)
 
 The service publishes no host port. Traefik reaches it through the external `coolify`
 Docker network and routes `http://m.core` after applying `tailnet-only@file`.
@@ -154,6 +157,13 @@ Axiom-One SNATs Tailscale-to-Docker traffic to the fixed Coolify bridge gateways
 (`10.0.1.1` and `fdc8:fb8c:427a::1`) before Traefik sees it, so the shared middleware
 accepts those two transport identities as well as the Tailscale IPv4 and IPv6 ranges.
 Public traffic retains its original source address and is rejected.
+
+YouTube may challenge datacenter IPs. The image enables yt-dlp's Bun JavaScript runtime.
+If a challenge still requires authentication, place a narrowly scoped Netscape cookie
+file at `/data/musicserver/secrets/youtube-cookies.txt` and set
+`YT_DLP_COOKIES_PATH=/run/secrets/musicserver/youtube-cookies.txt`, or configure a
+residential `YT_DLP_PROXY`. Treat cookies and proxy credentials as secrets; never commit
+them.
 
 Pushes to `mistress` run type checks and tests, publish AMD64 images as both `mistress`
 and the full commit SHA, then call the Coolify deployment webhook. The GitHub

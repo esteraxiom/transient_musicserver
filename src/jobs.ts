@@ -12,7 +12,13 @@ export interface JobQueue {
 }
 
 export type YtdlpRunner = (opts: DownloadOptions) => Promise<void>;
-export type TitleFetcher = (url: string, ytdlpPath?: string, signal?: AbortSignal) => Promise<string>;
+export type TitleFetcher = (
+  url: string,
+  ytdlpPath?: string,
+  signal?: AbortSignal,
+  cookiesPath?: string,
+  proxy?: string,
+) => Promise<string>;
 
 export function createQueue(
   db: Database,
@@ -22,11 +28,13 @@ export function createQueue(
     ytdlpRunner?: YtdlpRunner;
     titleFetcher?: TitleFetcher;
     ytdlpPath?: string;
+    ytdlpCookiesPath?: string;
+    ytdlpProxy?: string;
     maxBytes?: number;
     minFreeBytes?: number;
   }
 ): JobQueue {
-  const { mediaDir, tmpDir, ytdlpPath } = opts;
+  const { mediaDir, tmpDir, ytdlpPath, ytdlpCookiesPath, ytdlpProxy } = opts;
   const maxBytes = opts.maxBytes ?? Number.POSITIVE_INFINITY;
   const minFreeBytes = opts.minFreeBytes ?? 0;
   const runner: YtdlpRunner = opts.ytdlpRunner ?? downloadAudio;
@@ -65,6 +73,8 @@ export function createQueue(
         url: job.source_url,
         outputTemplate,
         ytdlpPath,
+        cookiesPath: ytdlpCookiesPath,
+        proxy: ytdlpProxy,
         signal: activeController.signal,
         onProgress: (line) => {
           const now = Date.now();
@@ -78,7 +88,7 @@ export function createQueue(
       const title =
         job.requested_title?.trim()
           ? job.requested_title
-          : await titler(job.source_url, ytdlpPath, activeController.signal);
+          : await titler(job.source_url, ytdlpPath, activeController.signal, ytdlpCookiesPath, ytdlpProxy);
 
       const filename = job.custom_filename
         ? generateCustomFilename(title)

@@ -22,11 +22,14 @@ services:
       DB_PATH: /data/musicserver/db/app.sqlite
       MEDIA_MAX_BYTES: "10737418240"
       MIN_FREE_BYTES: "5368709120"
+      YT_DLP_COOKIES_PATH: "${YT_DLP_COOKIES_PATH:-}"
+      YT_DLP_PROXY: "${YT_DLP_PROXY:-}"
       TZ: America/Argentina/Buenos_Aires
     volumes:
       - /data/musicserver/db:/data/musicserver/db
       - /data/musicserver/media:/data/musicserver/media
       - /data/musicserver/tmp:/data/musicserver/tmp
+      - /data/musicserver/secrets:/run/secrets/musicserver:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000
     healthcheck:

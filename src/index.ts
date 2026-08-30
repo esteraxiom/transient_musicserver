@@ -13,6 +13,8 @@ const TMP_DIR   = process.env.TMP_DIR   ?? "./tmp";
 const DB_PATH   = process.env.DB_PATH   ?? "./data/app.sqlite";
 const MEDIA_MAX_BYTES = Number(process.env.MEDIA_MAX_BYTES ?? DEFAULT_MEDIA_MAX_BYTES);
 const MIN_FREE_BYTES = Number(process.env.MIN_FREE_BYTES ?? DEFAULT_MIN_FREE_BYTES);
+const YT_DLP_COOKIES_PATH = process.env.YT_DLP_COOKIES_PATH || undefined;
+const YT_DLP_PROXY = process.env.YT_DLP_PROXY || undefined;
 
 mkdirSync(MEDIA_DIR, { recursive: true });
 mkdirSync(TMP_DIR,   { recursive: true });
@@ -29,6 +31,8 @@ const queue = createQueue(db, {
   tmpDir: TMP_DIR,
   maxBytes: MEDIA_MAX_BYTES,
   minFreeBytes: MIN_FREE_BYTES,
+  ytdlpCookiesPath: YT_DLP_COOKIES_PATH,
+  ytdlpProxy: YT_DLP_PROXY,
 });
 
 for (const jobId of recoveredJobIds) queue.enqueue(jobId);
