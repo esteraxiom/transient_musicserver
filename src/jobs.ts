@@ -1,17 +1,18 @@
 import type { Database } from "bun:sqlite";
-import { renameSync, statSync } from "fs";
+import { renameSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
-import { getJob, updateJobStatus, updateJobProgress, insertTrack } from "./db";
+import { filenameExists, getJob, updateJobStatus, updateJobProgress, insertTrack, requeueJob } from "./db";
 import { downloadAudio, fetchTitle, type DownloadOptions } from "./ytdlp";
 import { generateFilename, generateCustomFilename } from "./sanitize";
+import { getStorageStatus } from "./storage";
 
 export interface JobQueue {
   enqueue(jobId: string): void;
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 export type YtdlpRunner = (opts: DownloadOptions) => Promise<void>;
-export type TitleFetcher = (url: string, ytdlpPath?: string) => Promise<string>;
+export type TitleFetcher = (url: string, ytdlpPath?: string, signal?: AbortSignal) => Promise<string>;
 
 export function createQueue(
   db: Database,
@@ -21,14 +22,19 @@ export function createQueue(
     ytdlpRunner?: YtdlpRunner;
     titleFetcher?: TitleFetcher;
     ytdlpPath?: string;
+    maxBytes?: number;
+    minFreeBytes?: number;
   }
 ): JobQueue {
   const { mediaDir, tmpDir, ytdlpPath } = opts;
+  const maxBytes = opts.maxBytes ?? Number.POSITIVE_INFINITY;
+  const minFreeBytes = opts.minFreeBytes ?? 0;
   const runner: YtdlpRunner = opts.ytdlpRunner ?? downloadAudio;
   const titler: TitleFetcher = opts.titleFetcher ?? fetchTitle;
 
   const queue: string[] = [];
   let stopped = false;
+  let activeController: AbortController | null = null;
 
   let wakeResolve!: () => void;
   let wakeSignal = newSignal();
@@ -49,13 +55,17 @@ export function createQueue(
     updateJobStatus(db, jobId, "running", { started_at: Date.now() });
 
     const outputTemplate = join(tmpDir, `${jobId}.%(ext)s`);
+    const outputPath = join(tmpDir, `${jobId}.mp3`);
     let lastWrite = 0;
+    let movedPath: string | null = null;
+    activeController = new AbortController();
 
     try {
       await runner({
         url: job.source_url,
         outputTemplate,
         ytdlpPath,
+        signal: activeController.signal,
         onProgress: (line) => {
           const now = Date.now();
           if (now - lastWrite >= 250) {
@@ -68,34 +78,67 @@ export function createQueue(
       const title =
         job.requested_title?.trim()
           ? job.requested_title
-          : await titler(job.source_url, ytdlpPath);
+          : await titler(job.source_url, ytdlpPath, activeController.signal);
 
       const filename = job.custom_filename
         ? generateCustomFilename(title)
         : generateFilename(title, jobId);
-      const srcPath = join(tmpDir, `${jobId}.mp3`);
+      const srcPath = outputPath;
       const destPath = join(mediaDir, filename);
 
+      if (job.custom_filename && filenameExists(db, filename)) {
+        throw new Error("A track with this name already exists");
+      }
+
+      const { size } = statSync(srcPath);
+      const storage = getStorageStatus({
+        mediaDir,
+        maxBytes,
+        minFreeBytes,
+        additionalBytes: size,
+      });
+      if (!storage.acceptingJobs) {
+        throw new Error(storage.reason ?? "Storage policy rejected the download");
+      }
+
       renameSync(srcPath, destPath);
+      movedPath = destPath;
 
-      const { size } = statSync(destPath);
-
-      const track = insertTrack(db, {
-        title,
-        filename,
-        source_url: job.source_url,
-        bytes: size,
-        duration_seconds: null,
+      const finishJob = db.transaction(() => {
+        const track = insertTrack(db, {
+          title,
+          filename,
+          source_url: job.source_url,
+          bytes: size,
+          duration_seconds: null,
+        });
+        updateJobStatus(db, jobId, "finished", {
+          track_id: track.id,
+          finished_at: Date.now(),
+        });
       });
-
-      updateJobStatus(db, jobId, "finished", {
-        track_id: track.id,
-        finished_at: Date.now(),
-      });
+      finishJob();
+      movedPath = null;
     } catch (err) {
-      updateJobStatus(db, jobId, "failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      for (const path of [outputPath, movedPath]) {
+        if (!path) continue;
+        try {
+          unlinkSync(path);
+        } catch (unlinkError) {
+          if ((unlinkError as { code?: string }).code !== "ENOENT") {
+            console.error(`failed to remove job artifact ${path}`, unlinkError);
+          }
+        }
+      }
+      if (stopped) {
+        requeueJob(db, jobId);
+      } else {
+        updateJobStatus(db, jobId, "failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      activeController = null;
     }
   }
 
@@ -110,16 +153,18 @@ export function createQueue(
     }
   }
 
-  worker();
+  const workerPromise = worker();
 
   return {
     enqueue(jobId: string) {
       queue.push(jobId);
       wake();
     },
-    stop() {
+    async stop() {
       stopped = true;
+      activeController?.abort();
       wake();
+      await workerPromise;
     },
   };
 }

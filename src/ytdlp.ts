@@ -3,6 +3,7 @@ export interface DownloadOptions {
   outputTemplate: string;
   onProgress?: (line: string) => void;
   ytdlpPath?: string;
+  signal?: AbortSignal;
 }
 
 export function parseProgressLine(line: string): string | null {
@@ -12,10 +13,10 @@ export function parseProgressLine(line: string): string | null {
   return null;
 }
 
-export async function fetchTitle(url: string, ytdlpPath = "yt-dlp"): Promise<string> {
+export async function fetchTitle(url: string, ytdlpPath = "yt-dlp", signal?: AbortSignal): Promise<string> {
   const proc = Bun.spawn(
     [ytdlpPath, "--no-playlist", "--print", "%(title)s", url],
-    { stdout: "pipe", stderr: "ignore" }
+    { stdout: "pipe", stderr: "ignore", signal }
   );
 
   const exitCode = await proc.exited;
@@ -35,12 +36,15 @@ export async function downloadAudio(opts: DownloadOptions): Promise<void> {
       ytdlpPath,
       "--extract-audio",
       "--audio-format", "mp3",
+      "--format", "bestaudio/best",
+      "--max-filesize", "1G",
+      "--no-cache-dir",
       "--no-playlist",
       "--newline",
       "-o", opts.outputTemplate,
       opts.url,
     ],
-    { stdout: "ignore", stderr: "pipe" }
+    { stdout: "ignore", stderr: "pipe", signal: opts.signal }
   );
 
   const reader = proc.stderr.getReader();

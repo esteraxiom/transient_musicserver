@@ -1,13 +1,20 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serveStatic } from "hono/bun";
-import { join } from "path";
-import { unlinkSync } from "fs";
+import { bodyLimit } from "hono/body-limit";
+import { basename, join } from "path";
+import { accessSync, constants, unlinkSync } from "fs";
 import type { Database } from "bun:sqlite";
 import { getJob, getTrack, getAllTracks, insertJob, deleteTrack, filenameExists } from "./db";
 import { isAllowedUrl, isPlaylistUrl, generateCustomFilename } from "./sanitize";
 import type { JobQueue } from "./jobs";
+import { parseByteRange } from "./media";
+import { DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MIN_FREE_BYTES, getStorageStatus } from "./storage";
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+export function getForwardedClientIp(header: string | undefined): string {
+  return header?.split(",").at(-1)?.trim() || "unknown";
+}
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -24,9 +31,28 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: string }) {
+export function createApp(db: Database, queue: JobQueue, opts?: {
+  mediaDir?: string;
+  tmpDir?: string;
+  maxBytes?: number;
+  minFreeBytes?: number;
+}) {
   const mediaDir = opts?.mediaDir ?? "./media";
+  const tmpDir = opts?.tmpDir ?? mediaDir;
+  const maxBytes = opts?.maxBytes ?? DEFAULT_MEDIA_MAX_BYTES;
+  const minFreeBytes = opts?.minFreeBytes ?? DEFAULT_MIN_FREE_BYTES;
   const app = new Hono();
+
+  app.get("/health", (c) => {
+    try {
+      db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
+      accessSync(mediaDir, constants.R_OK | constants.W_OK);
+      accessSync(tmpDir, constants.R_OK | constants.W_OK);
+      return c.json({ status: "ok" }, 200);
+    } catch {
+      return c.json({ status: "unhealthy" }, 503);
+    }
+  });
 
   app.use("/api/*", async (c, next) => {
     const token = process.env.API_TOKEN;
@@ -40,8 +66,13 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
     return next();
   });
 
+  app.use("/api/jobs", bodyLimit({
+    maxSize: 16 * 1024,
+    onError: (c) => c.json({ error: "Request body too large" }, 413),
+  }));
+
   app.post("/api/jobs", async (c) => {
-    const ip = c.req.header("x-forwarded-for") ?? "unknown";
+    const ip = getForwardedClientIp(c.req.header("x-forwarded-for"));
     if (!checkRateLimit(ip)) {
       return c.json({ error: "Rate limit exceeded" }, 429);
     }
@@ -66,6 +97,11 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
       return c.json({ error: "Playlist URLs are not supported" }, 400);
     }
 
+    const storage = getStorageStatus({ mediaDir, maxBytes, minFreeBytes });
+    if (!storage.acceptingJobs) {
+      return c.json({ error: storage.reason }, 507);
+    }
+
     if (title && title.trim()) {
       const filename = generateCustomFilename(title);
       if (filenameExists(db, filename)) {
@@ -77,6 +113,11 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
     queue.enqueue(job.id);
 
     return c.json({ jobId: job.id }, 201);
+  });
+
+  app.get("/api/status", (c) => {
+    const storage = getStorageStatus({ mediaDir, maxBytes, minFreeBytes });
+    return c.json(storage, 200);
   });
 
   app.get("/api/jobs/:id", (c) => {
@@ -116,6 +157,7 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
       title: track.title,
       url: `/media/${track.filename}`,
       createdAt: track.created_at,
+      bytes: track.bytes,
     }));
     return c.json(response, 200);
   });
@@ -126,6 +168,10 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
 
     if (!track) {
       return c.json({ error: "Track not found" }, 404);
+    }
+
+    if (basename(track.filename) !== track.filename || track.filename.includes("..")) {
+      return c.json({ error: "Invalid track record" }, 500);
     }
 
     try {
@@ -140,10 +186,10 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
     return new Response(null, { status: 204 });
   });
 
-  app.get("/media/:filename", async (c) => {
+  async function serveMedia(c: Context, headOnly: boolean): Promise<Response> {
     const filename = c.req.param("filename");
 
-    if (filename.includes("..") || filename.includes("/")) {
+    if (!filename || filename.includes("..") || filename.includes("/") || basename(filename) !== filename) {
       return c.text("Forbidden", 403);
     }
 
@@ -154,10 +200,39 @@ export function createApp(db: Database, queue: JobQueue, opts?: { mediaDir?: str
       return c.text("Not found", 404);
     }
 
-    return new Response(file, {
-      headers: { "Content-Type": "audio/mpeg" },
+    const commonHeaders: Record<string, string> = {
+      "Accept-Ranges": "bytes",
+      "Content-Type": "audio/mpeg",
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    };
+    const rangeHeader = c.req.header("range");
+
+    if (!rangeHeader) {
+      commonHeaders["Content-Length"] = String(file.size);
+      return new Response(headOnly ? null : file, { status: 200, headers: commonHeaders });
+    }
+
+    const range = parseByteRange(rangeHeader, file.size);
+    if (range === "invalid") {
+      return new Response(null, {
+        status: 416,
+        headers: { ...commonHeaders, "Content-Range": `bytes */${file.size}` },
+      });
+    }
+
+    const length = range.end - range.start + 1;
+    return new Response(headOnly ? null : file.slice(range.start, range.end + 1), {
+      status: 206,
+      headers: {
+        ...commonHeaders,
+        "Content-Length": String(length),
+        "Content-Range": `bytes ${range.start}-${range.end}/${file.size}`,
+      },
     });
-  });
+  }
+
+  app.get("/media/:filename", (c) => serveMedia(c, false));
+  app.on("HEAD", "/media/:filename", (c) => serveMedia(c, true));
 
   app.get("/*", serveStatic({ root: "./public" }));
 

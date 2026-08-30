@@ -84,7 +84,7 @@ export function updateJobStatus(
   status: JobStatus,
   extra?: Partial<Pick<Job, 'track_id' | 'error' | 'started_at' | 'finished_at'>>
 ): void {
-  const fields: Record<string, unknown> = { status };
+  const fields: Record<string, string | number | null> = { status };
   if (extra) Object.assign(fields, extra);
 
   const setClauses = Object.keys(fields).map(k => `${k} = ?`).join(", ");
@@ -95,6 +95,29 @@ export function updateJobStatus(
 
 export function updateJobProgress(db: Database, id: string, progress: string): void {
   db.run(`UPDATE jobs SET progress = ? WHERE id = ?`, [progress, id]);
+}
+
+export function requeueJob(db: Database, id: string): void {
+  db.run(
+    `UPDATE jobs
+     SET status = 'queued', progress = NULL, error = NULL, started_at = NULL, finished_at = NULL
+     WHERE id = ?`,
+    [id]
+  );
+}
+
+export function recoverInterruptedJobs(db: Database): string[] {
+  const recover = db.transaction(() => {
+    db.run(
+      `UPDATE jobs
+       SET status = 'queued', progress = NULL, error = NULL, started_at = NULL, finished_at = NULL
+       WHERE status = 'running'`
+    );
+    return db.query<{ id: string }, []>(
+      `SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at ASC`
+    ).all().map((job) => job.id);
+  });
+  return recover();
 }
 
 export function insertTrack(

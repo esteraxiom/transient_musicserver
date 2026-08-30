@@ -35,7 +35,7 @@ const ALLOWED_HOSTS = new Set([
 export function isAllowedUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return ALLOWED_HOSTS.has(parsed.hostname);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && ALLOWED_HOSTS.has(parsed.hostname);
   } catch {
     return false;
   }

@@ -32,16 +32,72 @@ h1 {
   font-size: 1.4rem;
   letter-spacing: 0.1em;
   text-transform: lowercase;
-  border-bottom: var(--border);
-  padding-bottom: 0.5rem;
-  margin-bottom: 2rem;
+  line-height: 1;
 }
 
 h2 {
   font-size: 1rem;
   text-transform: lowercase;
   color: var(--muted);
+}
+
+.masthead {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: var(--border);
+  padding-bottom: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.host-mark {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+#storage-section {
+  margin-bottom: 2rem;
+}
+
+.storage-copy,
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.storage-copy {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 0.35rem;
+}
+
+.storage-track {
+  background: #202020;
+  height: 4px;
+  overflow: hidden;
+}
+
+#storage-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  transition: width 220ms ease;
+}
+
+.storage-blocked {
+  color: var(--error);
 }
 
 /* Form */
@@ -112,6 +168,17 @@ button:disabled {
 
 /* Tracks */
 
+.section-heading {
+  margin-bottom: 1rem;
+}
+
+#refresh-btn {
+  border: 0;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0;
+}
+
 #tracks-list {
   list-style: none;
   display: flex;
@@ -129,10 +196,21 @@ button:disabled {
 }
 
 .track-title {
-  flex: 1;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track-identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.track-size {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .track-actions {
@@ -158,6 +236,10 @@ button:disabled {
   background: none;
 }
 
+.track-actions .delete-action:hover {
+  color: var(--error);
+}
+
 .copy-feedback {
   color: var(--accent);
   font-size: 11px;
@@ -165,3 +247,21 @@ button:disabled {
 
 /* Utility */
 [hidden] { display: none !important; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 560px) {
+  body { padding: 1rem; }
+  .track-item { align-items: flex-start; }
+  .track-actions { flex-direction: column; align-items: flex-end; }
+}

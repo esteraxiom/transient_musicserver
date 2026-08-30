@@ -1,0 +1,22 @@
+{
+  "initiative": "Deploy transient musicserver to Axiom-One",
+  "slices": [
+    {
+      "id": "APP",
+      "requirements": ["REQ-004", "REQ-005", "REQ-006", "REQ-007"],
+      "done_when": "Application tests, type checks, container smoke, and UI runtime checks pass"
+    },
+    {
+      "id": "RELEASE",
+      "requirements": ["REQ-003", "REQ-009", "REQ-010"],
+      "blocked_by": ["APP"],
+      "done_when": "GHCR image and Coolify deployment use the tested mistress revision"
+    },
+    {
+      "id": "CUTOVER",
+      "requirements": ["REQ-001", "REQ-002", "REQ-008"],
+      "blocked_by": ["RELEASE"],
+      "done_when": "Migration, private routing, public denial, streaming, and rollback checks pass"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+services:
+  musicserver:
+    image: "${MUSICSERVER_IMAGE:-ghcr.io/esteraxiom/transient-musicserver}:${MUSICSERVER_TAG:-mistress}"
+    user: "1000:1000"
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 2.0
+    environment:
+      HOST: 0.0.0.0
+      PORT: "47291"
+      MEDIA_DIR: /data/musicserver/media
+      TMP_DIR: /data/musicserver/tmp
+      DB_PATH: /data/musicserver/db/app.sqlite
+      MEDIA_MAX_BYTES: "10737418240"
+      MIN_FREE_BYTES: "5368709120"
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - /data/musicserver/db:/data/musicserver/db
+      - /data/musicserver/media:/data/musicserver/media
+      - /data/musicserver/tmp:/data/musicserver/tmp
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:47291/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.musicserver-gzip.compress=true
+      - traefik.http.routers.musicserver.entryPoints=http
+      - traefik.http.routers.musicserver.middlewares=tailnet-only@file,musicserver-gzip
+      - traefik.http.routers.musicserver.rule=Host(`m.core`) && PathPrefix(`/`)
+      - traefik.http.services.musicserver.loadbalancer.server.port=47291
+    networks:
+      - coolify
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  coolify:
+    external: true

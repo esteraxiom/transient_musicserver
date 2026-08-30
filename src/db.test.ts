@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach } from "bun:test";
-import { openDb, runMigrations, insertJob, getJob, updateJobStatus, updateJobProgress, insertTrack, getTrack, getAllTracks, deleteTrack } from "./db";
+import { openDb, runMigrations, insertJob, getJob, updateJobStatus, updateJobProgress, insertTrack, getTrack, getAllTracks, deleteTrack, recoverInterruptedJobs } from "./db";
 import type { Database } from "bun:sqlite";
 
 let db: Database;
@@ -71,6 +71,16 @@ describe("jobs", () => {
     updateJobProgress(db, job.id, "[download]  50.0% of 5.00MiB");
     const updated = getJob(db, job.id);
     expect(updated!.progress).toBe("[download]  50.0% of 5.00MiB");
+  });
+
+  test("recoverInterruptedJobs requeues running jobs in creation order", () => {
+    const first = insertJob(db, { source_url: "https://youtube.com/watch?v=first", requested_title: null });
+    const second = insertJob(db, { source_url: "https://youtube.com/watch?v=second", requested_title: null });
+    updateJobStatus(db, first.id, "running", { started_at: Date.now() });
+
+    expect(recoverInterruptedJobs(db)).toEqual([first.id, second.id]);
+    expect(getJob(db, first.id)!.status).toBe("queued");
+    expect(getJob(db, first.id)!.started_at).toBeNull();
   });
 });
 

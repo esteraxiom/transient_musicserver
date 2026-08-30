@@ -1,6 +1,6 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { openDb, runMigrations, insertTrack } from "./db";
-import { createApp } from "./server";
+import { createApp, getForwardedClientIp } from "./server";
 import { createQueue } from "./jobs";
 import type { Database } from "bun:sqlite";
 import type { DownloadOptions } from "./ytdlp";
@@ -28,7 +28,7 @@ beforeEach(() => {
     titleFetcher: async () => "Test Title",
   });
 
-  app = createApp(db, queue, { mediaDir: tmpDir });
+  app = createApp(db, queue, { mediaDir: tmpDir, tmpDir, minFreeBytes: 0 });
 });
 
 afterEach(() => {
@@ -92,6 +92,69 @@ describe("POST /api/jobs", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+  });
+
+  test("returns 507 when storage policy blocks new jobs", async () => {
+    const blocked = createApp(db, queue, {
+      mediaDir: tmpDir,
+      tmpDir,
+      maxBytes: 0,
+      minFreeBytes: 0,
+    });
+    const res = await blocked.request("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://www.youtube.com/watch?v=abc123" }),
+    });
+    expect(res.status).toBe(507);
+    expect(await res.json()).toEqual({ error: "Library storage limit reached" });
+  });
+
+  test("rejects an oversized request body", async () => {
+    const res = await app.request("/api/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: "https://www.youtube.com/watch?v=abc123",
+        title: "x".repeat(17 * 1024),
+      }),
+    });
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "Request body too large" });
+  });
+});
+
+describe("proxy client address", () => {
+  test("uses the address appended by the trusted reverse proxy", () => {
+    expect(getForwardedClientIp("spoofed, 100.101.102.103")).toBe("100.101.102.103");
+    expect(getForwardedClientIp(undefined)).toBe("unknown");
+  });
+});
+
+describe("health and storage status", () => {
+  test("GET /health reports a healthy database and directories", async () => {
+    const res = await app.request("/health");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "ok" });
+  });
+
+  test("GET /health fails when a required directory is unavailable", async () => {
+    const unhealthy = createApp(db, queue, {
+      mediaDir: join(tmpDir, "missing-media"),
+      tmpDir,
+    });
+    const res = await unhealthy.request("/health");
+    expect(res.status).toBe(503);
+  });
+
+  test("GET /api/status exposes storage limits", async () => {
+    const res = await app.request("/api/status");
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(typeof body.usedBytes).toBe("number");
+    expect(typeof body.freeBytes).toBe("number");
+    expect(typeof body.limitBytes).toBe("number");
+    expect(typeof body.acceptingJobs).toBe("boolean");
   });
 });
 
@@ -161,11 +224,42 @@ describe("GET /api/tracks", () => {
 
     const res = await app.request("/api/tracks");
     expect(res.status).toBe(200);
-    const body = await res.json() as Array<{ id: string; title: string; url: string; createdAt: number }>;
+    const body = await res.json() as Array<{ id: string; title: string; url: string; createdAt: number; bytes: number }>;
     expect(body).toHaveLength(1);
     expect(body[0].title).toBe("My Song");
     expect(body[0].url).toMatch(/\/media\/song__abc12345\.mp3$/);
     expect(typeof body[0].createdAt).toBe("number");
+    expect(body[0].bytes).toBe(1024);
+  });
+});
+
+describe("media ranges", () => {
+  test("GET /media returns a satisfiable byte range", async () => {
+    await Bun.write(join(tmpDir, "range.mp3"), new Uint8Array([0, 1, 2, 3, 4]));
+    const res = await app.request("/media/range.mp3", {
+      headers: { Range: "bytes=1-3" },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe("bytes 1-3/5");
+    expect(res.headers.get("accept-ranges")).toBe("bytes");
+    expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual([1, 2, 3]);
+  });
+
+  test("GET /media rejects an invalid byte range", async () => {
+    await Bun.write(join(tmpDir, "range.mp3"), new Uint8Array([0, 1, 2]));
+    const res = await app.request("/media/range.mp3", {
+      headers: { Range: "bytes=3-" },
+    });
+    expect(res.status).toBe(416);
+    expect(res.headers.get("content-range")).toBe("bytes */3");
+  });
+
+  test("HEAD /media returns headers without a body", async () => {
+    await Bun.write(join(tmpDir, "head.mp3"), new Uint8Array([0, 1, 2]));
+    const res = await app.request("/media/head.mp3", { method: "HEAD" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-length")).toBe("3");
+    expect((await res.arrayBuffer()).byteLength).toBe(0);
   });
 });
 
@@ -192,5 +286,18 @@ describe("DELETE /api/tracks/:id", () => {
   test("returns 404 for a nonexistent track id", async () => {
     const res = await app.request("/api/tracks/nonexistent-track-id", { method: "DELETE" });
     expect(res.status).toBe(404);
+  });
+
+  test("refuses an unsafe filename stored in the catalog", async () => {
+    const track = insertTrack(db, {
+      title: "Corrupt",
+      filename: "../outside.mp3",
+      source_url: "https://youtube.com/watch?v=test",
+      bytes: 1,
+      duration_seconds: null,
+    });
+    const res = await app.request(`/api/tracks/${track.id}`, { method: "DELETE" });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Invalid track record" });
   });
 });

@@ -81,6 +81,10 @@ describe("isAllowedUrl", () => {
     expect(isAllowedUrl("not-a-url")).toBe(false);
     expect(isAllowedUrl("")).toBe(false);
   });
+  test("rejects non-HTTP schemes even with an allowed hostname", () => {
+    expect(isAllowedUrl("file://youtube.com/etc/passwd")).toBe(false);
+    expect(isAllowedUrl("ftp://youtube.com/video.mp3")).toBe(false);
+  });
 });
 
 describe("isPlaylistUrl", () => {

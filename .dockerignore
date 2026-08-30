@@ -1,0 +1,11 @@
+.git
+.github
+.chainlink
+.claude
+node_modules
+data
+media
+tmp
+PLANNING
+*.mp3
+.env*

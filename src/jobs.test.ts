@@ -4,7 +4,7 @@ import { createQueue } from "./jobs";
 import type { Database } from "bun:sqlite";
 import type { DownloadOptions } from "./ytdlp";
 import { join } from "path";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 
 let db: Database;
@@ -173,5 +173,61 @@ describe("createQueue", () => {
     expect(getJob(db, job2.id)!.status).toBe("finished");
     expect(processedUrls[0]).toBe("https://youtube.com/watch?v=aaa");
     expect(processedUrls[1]).toBe("https://youtube.com/watch?v=bbb");
+  });
+
+  test("fails and removes output when finalization would cross the media cap", async () => {
+    const job = insertJob(db, { source_url: "https://youtube.com/watch?v=large", requested_title: "Large" });
+    const mediaDir = join(tmpDir, "media");
+    const downloadDir = join(tmpDir, "downloads");
+    mkdirSync(mediaDir);
+    mkdirSync(downloadDir);
+    queue = createQueue(db, {
+      mediaDir,
+      tmpDir: downloadDir,
+      maxBytes: 3,
+      minFreeBytes: 0,
+      ytdlpRunner: makeSuccessRunner(),
+      titleFetcher: async () => "Large",
+    });
+
+    queue.enqueue(job.id);
+    await waitForJob(job.id);
+
+    expect(getJob(db, job.id)!.status).toBe("failed");
+    expect(getJob(db, job.id)!.error).toContain("library storage limit");
+    expect((await import("fs")).existsSync(join(downloadDir, `${job.id}.mp3`))).toBe(false);
+  });
+
+  test("does not overwrite a custom filename reserved by an earlier queued job", async () => {
+    const first = insertJob(db, {
+      source_url: "https://youtube.com/watch?v=first",
+      requested_title: "Same Name",
+      custom_filename: true,
+    });
+    const second = insertJob(db, {
+      source_url: "https://youtube.com/watch?v=second",
+      requested_title: "Same Name",
+      custom_filename: true,
+    });
+    const mediaDir = join(tmpDir, "media");
+    const downloadDir = join(tmpDir, "downloads");
+    mkdirSync(mediaDir);
+    mkdirSync(downloadDir);
+    queue = createQueue(db, {
+      mediaDir,
+      tmpDir: downloadDir,
+      ytdlpRunner: makeSuccessRunner(),
+      titleFetcher: async () => "Same Name",
+    });
+
+    queue.enqueue(first.id);
+    queue.enqueue(second.id);
+    await waitForJob(first.id);
+    await waitForJob(second.id);
+
+    expect(getJob(db, first.id)!.status).toBe("finished");
+    expect(getJob(db, second.id)!.status).toBe("failed");
+    expect(getJob(db, second.id)!.error).toContain("already exists");
+    expect((await import("./db")).getAllTracks(db)).toHaveLength(1);
   });
 });

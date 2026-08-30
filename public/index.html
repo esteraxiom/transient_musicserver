@@ -8,22 +8,43 @@
 </head>
 <body>
   <main>
-    <h1>musicserver</h1>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">tailnet audio cache</p>
+        <h1>musicserver</h1>
+      </div>
+      <span class="host-mark">m.core</span>
+    </header>
+
+    <section id="storage-section" aria-labelledby="storage-label">
+      <div class="storage-copy">
+        <span id="storage-label">storage</span>
+        <span id="storage-display">checking...</span>
+      </div>
+      <div class="storage-track" role="progressbar" aria-label="Music library storage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <span id="storage-fill"></span>
+      </div>
+    </section>
 
     <section id="form-section">
       <form id="download-form">
+        <label class="sr-only" for="url-input">YouTube URL</label>
         <input type="url" id="url-input" placeholder="youtube url" required>
+        <label class="sr-only" for="title-input">Custom track title</label>
         <input type="text" id="title-input" placeholder="custom title (optional)">
-        <button type="submit" id="submit-btn">DOWNLOAD</button>
+        <button type="submit" id="submit-btn">download</button>
       </form>
     </section>
 
     <section id="status-section" hidden>
-      <div id="status-display"></div>
+      <div id="status-display" role="status" aria-live="polite"></div>
     </section>
 
     <section id="tracks-section">
-      <h2>tracks</h2>
+      <div class="section-heading">
+        <h2>tracks</h2>
+        <button type="button" id="refresh-btn">refresh</button>
+      </div>
       <ul id="tracks-list"></ul>
     </section>
   </main>
