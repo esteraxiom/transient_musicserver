@@ -150,6 +150,11 @@ middleware definition. Axiom-One uses these persistent host paths:
 The service publishes no host port. Traefik reaches it through the external `coolify`
 Docker network and routes `http://m.core` after applying `tailnet-only@file`.
 
+Axiom-One SNATs Tailscale-to-Docker traffic to the fixed Coolify bridge gateways
+(`10.0.1.1` and `fdc8:fb8c:427a::1`) before Traefik sees it, so the shared middleware
+accepts those two transport identities as well as the Tailscale IPv4 and IPv6 ranges.
+Public traffic retains its original source address and is rejected.
+
 Pushes to `mistress` run type checks and tests, publish AMD64 images as both `mistress`
 and the full commit SHA, then call the Coolify deployment webhook. The GitHub
 `production` environment must contain `COOLIFY_WEBHOOK` and `COOLIFY_TOKEN`.

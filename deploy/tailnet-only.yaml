@@ -5,3 +5,6 @@ http:
         sourceRange:
           - 100.64.0.0/10
           - fd7a:115c:a1e0::/48
+          # Tailscale-to-Docker traffic is SNATed to Coolify's bridge gateways.
+          - 10.0.1.1/32
+          - fdc8:fb8c:427a::1/128
