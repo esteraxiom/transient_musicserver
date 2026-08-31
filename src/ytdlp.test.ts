@@ -87,6 +87,7 @@ describe("downloadAudio (using dummy yt-dlp)", () => {
     });
     expect(progressLines.length).toBeGreaterThan(0);
     expect(progressLines.some(l => l.includes("%"))).toBe(true);
+    expect(progressLines.some(l => l.includes("50.0%"))).toBe(true);
   });
 
   test("rejects when the binary does not exist", async () => {

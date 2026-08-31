@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { renameSync, statSync, unlinkSync } from "fs";
-import { join } from "path";
+import { closeSync, constants, copyFileSync, existsSync, fsyncSync, openSync, renameSync, statSync, unlinkSync } from "fs";
+import { dirname, join } from "path";
 import { filenameExists, getJob, updateJobStatus, updateJobProgress, insertTrack, requeueJob } from "./db";
 import { downloadAudio, fetchTitle, type DownloadOptions } from "./ytdlp";
 import { generateFilename, generateCustomFilename } from "./sanitize";
@@ -19,6 +19,50 @@ export type TitleFetcher = (
   cookiesPath?: string,
   proxy?: string,
 ) => Promise<string>;
+
+export function moveCompletedDownload(srcPath: string, destPath: string, jobId: string): void {
+  if (existsSync(destPath)) {
+    throw new Error("A file with this name already exists");
+  }
+
+  try {
+    renameSync(srcPath, destPath);
+    return;
+  } catch (error) {
+    if ((error as { code?: string }).code !== "EXDEV") throw error;
+  }
+
+  const stagingPath = join(dirname(destPath), `.musicserver-${jobId}.partial`);
+  if (existsSync(stagingPath)) {
+    throw new Error("A stale finalization file already exists");
+  }
+
+  let destCreated = false;
+  try {
+    copyFileSync(srcPath, stagingPath, constants.COPYFILE_EXCL);
+    const descriptor = openSync(stagingPath, "r");
+    try {
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    renameSync(stagingPath, destPath);
+    destCreated = true;
+    unlinkSync(srcPath);
+  } catch (error) {
+    for (const path of [stagingPath, destCreated ? destPath : null]) {
+      if (!path) continue;
+      try {
+        unlinkSync(path);
+      } catch (cleanupError) {
+        if ((cleanupError as { code?: string }).code !== "ENOENT") {
+          console.error(`failed to clean finalization artifact ${path}`, cleanupError);
+        }
+      }
+    }
+    throw error;
+  }
+}
 
 export function createQueue(
   db: Database,
@@ -111,7 +155,7 @@ export function createQueue(
         throw new Error(storage.reason ?? "Storage policy rejected the download");
       }
 
-      renameSync(srcPath, destPath);
+      moveCompletedDownload(srcPath, destPath, jobId);
       movedPath = destPath;
 
       const finishJob = db.transaction(() => {

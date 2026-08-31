@@ -4,7 +4,7 @@ import { openDb, recoverInterruptedJobs, runMigrations } from "./db";
 import { createQueue } from "./jobs";
 import { createApp } from "./server";
 import { DEFAULT_MEDIA_MAX_BYTES, DEFAULT_MIN_FREE_BYTES } from "./storage";
-import { cleanupOrphanedDownloads } from "./startup";
+import { cleanupOrphanedDownloads, cleanupOrphanedMediaStaging } from "./startup";
 
 const PORT      = Number(process.env.PORT ?? "47291");
 const HOST      = process.env.HOST      ?? "192.168.192.83";
@@ -24,6 +24,7 @@ const db = openDb(DB_PATH);
 runMigrations(db);
 
 cleanupOrphanedDownloads(TMP_DIR);
+cleanupOrphanedMediaStaging(MEDIA_DIR);
 const recoveredJobIds = recoverInterruptedJobs(db);
 
 const queue = createQueue(db, {

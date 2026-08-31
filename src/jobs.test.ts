@@ -1,10 +1,10 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { openDb, runMigrations, insertJob, getJob } from "./db";
-import { createQueue } from "./jobs";
+import { createQueue, moveCompletedDownload } from "./jobs";
 import type { Database } from "bun:sqlite";
 import type { DownloadOptions } from "./ytdlp";
 import { join } from "path";
-import { mkdirSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 
 let db: Database;
@@ -52,6 +52,27 @@ function makeFailRunner(): (opts: DownloadOptions) => Promise<void> {
     throw new Error("simulated download failure");
   };
 }
+
+test("moveCompletedDownload finalizes across filesystems", () => {
+  const sourceDir = mkdtempSync(join(tmpdir(), "jobs-cross-device-source-"));
+  const mediaDir = mkdtempSync("/dev/shm/jobs-cross-device-media-");
+  const sourcePath = join(sourceDir, "job.mp3");
+  const destPath = join(mediaDir, "track.mp3");
+  const jobId = "a929494d-9f43-4f63-9e2b-4f0c3cb9f2b8";
+
+  try {
+    expect(statSync(sourceDir).dev).not.toBe(statSync(mediaDir).dev);
+    writeFileSync(sourcePath, "audio-bytes");
+    moveCompletedDownload(sourcePath, destPath, jobId);
+
+    expect(existsSync(sourcePath)).toBe(false);
+    expect(readFileSync(destPath, "utf8")).toBe("audio-bytes");
+    expect(existsSync(join(mediaDir, `.musicserver-${jobId}.partial`))).toBe(false);
+  } finally {
+    rmSync(sourceDir, { recursive: true, force: true });
+    rmSync(mediaDir, { recursive: true, force: true });
+  }
+});
 
 describe("createQueue", () => {
   test("processes a queued job to finished status", async () => {

@@ -1,0 +1,9 @@
+FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
+
+RUN apk add --no-cache tinyproxy=1.11.2-r0
+
+COPY tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+
+USER nobody:nobody
+
+ENTRYPOINT ["tinyproxy", "-d", "-c", "/etc/tinyproxy/tinyproxy.conf"]

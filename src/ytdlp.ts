@@ -75,38 +75,39 @@ export async function downloadAudio(opts: DownloadOptions): Promise<void> {
       "-o", opts.outputTemplate,
       opts.url,
     ],
-    { stdout: "ignore", stderr: "pipe", signal: opts.signal }
+    { stdout: "pipe", stderr: "pipe", signal: opts.signal }
   );
 
-  const reader = proc.stderr.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let lastError = "";
+  async function consume(stream: ReadableStream<Uint8Array>, captureErrors: boolean) {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
+    function handleLine(line: string) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith("ERROR:")) lastError = errorDetail(trimmed);
+      if (!trimmed) return;
+      if (captureErrors && trimmed.startsWith("ERROR:")) lastError = errorDetail(trimmed);
       const parsed = parseProgressLine(trimmed);
       if (parsed) opts.onProgress?.(parsed);
     }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) handleLine(line);
+    }
+    handleLine(buffer);
   }
 
-  if (buffer.trim()) {
-    if (buffer.trim().startsWith("ERROR:")) lastError = errorDetail(buffer.trim());
-    const parsed = parseProgressLine(buffer.trim());
-    if (parsed) opts.onProgress?.(parsed);
-  }
-
-  const exitCode = await proc.exited;
+  const [exitCode] = await Promise.all([
+    proc.exited,
+    consume(proc.stdout, false),
+    consume(proc.stderr, true),
+  ]);
   if (exitCode !== 0) {
     throw new Error(`yt-dlp exited with code ${exitCode}${lastError ? `: ${lastError}` : ""}`);
   }

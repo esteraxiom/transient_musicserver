@@ -12,9 +12,9 @@ echo "[download]   0.0% of 5.00MiB" >&2
 sleep 0.05
 echo "[download]  25.0% of 5.00MiB at 1.00MiB/s ETA 00:03" >&2
 sleep 0.05
-echo "[download]  50.0% of 5.00MiB at 1.00MiB/s ETA 00:02" >&2
+echo "[download]  50.0% of 5.00MiB at 1.00MiB/s ETA 00:02"
 sleep 0.05
-echo "[download] 100% of 5.00MiB" >&2
+echo "[download] 100% of 5.00MiB"
 
 # Find the -o flag and create a dummy file at that path
 OUTPUT=""

@@ -165,6 +165,11 @@ file at `/data/musicserver/secrets/youtube-cookies.txt` and set
 residential `YT_DLP_PROXY`. Treat cookies and proxy credentials as secrets; never commit
 them.
 
+Production uses `YT_DLP_PROXY=http://100.99.92.103:8888`. The matching Tinyproxy
+container runs on Clariframe and accepts only Axiom-One's tailnet IP. See
+`deploy/clariframe-proxy/README.md` for its lifecycle and recovery commands. Downloads
+pause when Clariframe is offline; streaming the existing library does not depend on it.
+
 Pushes to `mistress` run type checks and tests, publish AMD64 images as both `mistress`
 and the full commit SHA, then call the Coolify deployment webhook. The GitHub
 `production` environment must contain `COOLIFY_WEBHOOK` and `COOLIFY_TOKEN`.
